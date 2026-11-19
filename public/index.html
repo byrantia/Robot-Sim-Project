@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nav graph viewer</title>
+<style>
+:root{--bg:#eef1f4;--panel:#fff;--ink:#1b2530;--mute:#5d6b7a;--line:#d3dae1;--edge:#7b8ea3;--wp:#97a5b4;--poi:#0f766e;--sel:#7c3aed;--accent:#1d4ed8;--err:#b91c1c;color-scheme:light;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11161c;--panel:#1a2129;--ink:#e6ebf0;--mute:#97a4b2;--line:#2c3743;--edge:#6a7f95;--wp:#5b6d80;--poi:#2dd4bf;--sel:#c4b5fd;--accent:#7aa2ff;--err:#fca5a5;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#11161c;--panel:#1a2129;--ink:#e6ebf0;--mute:#97a4b2;--line:#2c3743;--edge:#6a7f95;--wp:#5b6d80;--poi:#2dd4bf;--sel:#c4b5fd;--accent:#7aa2ff;--err:#fca5a5;color-scheme:dark}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;height:100%;display:flex;flex-direction:column;background:var(--bg);color:var(--ink);font:14px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+header h1{font-size:15px;margin:0;font-weight:650;flex:1}
+button,input{font:inherit;color:inherit}
+button{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 11px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button:disabled{opacity:.5;cursor:default}
+#status{font-size:12px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+main{flex:1;min-height:0;display:grid;grid-template-columns:300px 1fr}
+aside{overflow:auto;background:var(--panel);border-right:1px solid var(--line);padding:12px 14px}
+.levels{display:flex;flex-direction:column;gap:6px}
+.level{text-align:left;display:flex;justify-content:space-between;gap:8px;width:100%}
+.level[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+.level[draggable="true"]{cursor:grab}
+.level.dragging{opacity:.45}
+.level.drop-before{box-shadow:inset 0 3px 0 var(--accent)}
+.level.drop-after{box-shadow:inset 0 -3px 0 var(--accent)}
+.level small,.mute{color:var(--mute)}
+.opt{display:flex;gap:8px;align-items:center;margin:4px 0}
+.places{list-style:none;margin:6px 0 0;padding:0;max-height:240px;overflow:auto}
+.places button{border:0;width:100%;text-align:left;padding:4px 6px;border-radius:4px}
+.places button.on{background:var(--bg);color:var(--sel);font-weight:600}
+input[type=search]{width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:2px 10px}
+dt{color:var(--mute)}dd{margin:0;overflow-wrap:anywhere}
+.row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.steps{margin:0 0 8px;padding-left:20px}
+.steps button{border:0;padding:3px 0;text-align:left}
+.stage{position:relative;min-height:0;min-width:0}
+canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:grab}
+canvas.drag{cursor:grabbing}
+.zoom{position:absolute;right:12px;bottom:12px;display:flex;flex-direction:column;gap:6px}
+.zoom button{width:36px;height:36px;padding:0}
+.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:12px;display:none;max-width:260px}
+.empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:20px;pointer-events:none}
+.empty button,.empty p{pointer-events:auto}
+.empty p{margin:0;max-width:34ch;color:var(--mute)}
+.msg{color:var(--err);margin:0 0 10px}
+details.sec{border-bottom:1px solid var(--line);padding:4px 0}
+details.sec>summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--mute);padding:5px 0;list-style:none;display:flex;justify-content:space-between;gap:8px}
+details.sec>summary::-webkit-details-marker{display:none}
+details.sec>summary::after{content:'−'}
+details.sec:not([open])>summary::after{content:'+'}
+.sec-body{padding:2px 0 8px}
+.sec-tools{display:flex;gap:6px;margin-bottom:6px}
+.sec-tools button{padding:3px 8px;font-size:12px}
+.robots{list-style:none;margin:8px 0 0;padding:0}
+.robots button{border:0;width:100%;text-align:left;padding:4px 6px;border-radius:4px;display:flex;gap:8px;align-items:center}
+.robots button.on{background:var(--bg);color:var(--sel);font-weight:600}
+.robots small{margin-left:auto;color:var(--mute);font-weight:400}
+.dot{width:10px;height:10px;border-radius:50%;flex:none}
+.obstacles{list-style:none;margin:8px 0 0;padding:0}
+.obstacles li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:2px 0}
+.obstacles button{padding:2px 8px;font-size:12px}
+.field{display:grid;grid-template-columns:96px 1fr;gap:8px;align-items:center;margin:4px 0}
+.field input,.field select{padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);min-width:0}
+.sub{font-weight:600;margin:12px 0 4px}
+.hint{color:var(--accent);margin:6px 0}
+main.noside{grid-template-columns:1fr;grid-template-rows:1fr}
+main.noside aside{display:none}
+@media (max-width:720px){main{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) minmax(0,40%)}.stage{order:-1}aside{border-right:0;border-top:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<header>
+  <button id="panel" aria-expanded="true" aria-controls="side" title="Show or hide the side panel">☰</button>
+  <h1>Nav graph viewer</h1>
+  <span id="status" class="mute" role="status"></span>
+  <button id="undo" disabled title="Undo (Ctrl+Z)">Undo</button>
+  <button id="redo" disabled title="Redo (Ctrl+Y)">Redo</button>
+  <button id="save" class="primary" disabled title="Save (Ctrl+S)">Save</button>
+  <button id="open">Open nav graph</button>
+  <input id="file" type="file" accept=".json,application/json" hidden>
+</header>
+<main>
+  <aside id="side"><p class="mute">Open a nav graph JSON file to see its levels.</p></aside>
+  <div class="stage" id="stage">
+    <canvas id="cv" aria-label="Nav graph map"></canvas>
+    <div class="empty" id="empty"><p>Drop a nav graph JSON file here, or choose one.</p><button id="open2">Choose file</button></div>
+    <div class="zoom"><button id="zin" aria-label="Zoom in">+</button><button id="zout" aria-label="Zoom out">−</button><button id="fit" aria-label="Fit to screen">Fit</button></div>
+    <div class="tip" id="tip"></div>
+  </div>
+</main>
+<script>
+/*PARSE_START*/
+function parseActions(a){
+  const out=[];
+  for(const v of (a&&a.values)||[]){
+    let o=v;
+    if(typeof v==='string'){try{o=JSON.parse(v)}catch(e){throw new Error('an action is not valid JSON')}}
+    out.push((o&&o.action&&o.action.type)||'unknown');
+  }
+  return out;
+}
+function parseNavGraph(json){
+  let root=json&&json.navGraph?json.navGraph:json, siteName='';
+  if(root&&root.sites&&typeof root.sites==='object'){
+    let s=root.sites[root.activeSiteId];
+    if(!s||!s.graphs||!Object.keys(s.graphs).length) s=Object.values(root.sites).find(x=>x&&x.graphs&&Object.keys(x.graphs).length);
+    if(!s) throw new Error('This backup has no site with graphs.');
+    siteName=s.name||''; root=s;
+  }
+  if(!root||typeof root.graphs!=='object'||!root.graphs) throw new Error('This file has no “navGraph.graphs” section.');
+  const names=Object.keys(root.graphs);
+  if(!names.length) throw new Error('“graphs” has no levels.');
+  const owner=new Map();
+  for(const l of names) for(const id of Object.keys(root.graphs[l]||{})) if(!owner.has(id)) owner.set(id,l);
+  const floors={};
+  for(const lift of (root.liftConfig&&root.liftConfig.lifts)||[]) for(const d of lift.details||[]) if(d.mapName&&d.floor!=null) floors[d.mapName]=d.floor;
+  const levels=names.map(name=>{
+    const nodes=root.graphs[name]||{}, list=[], byId=new Map(), adj=new Map(), edges=[], seen=new Set();
+    let skipped=0, zero=0;
+    for(const [id,n] of Object.entries(nodes)){
+      const p=n&&n.pose;
+      if(!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)) throw new Error(`Level “${name}”, node “${id}”: pose.x and pose.y must be numbers.`);
+      let actions;
+      try{actions=parseActions(n.actions)}catch(e){throw new Error(`Level “${name}”, node “${id}”: ${e.message}.`)}
+      const node={id,x:p.x,y:p.y,z:p.z,poi:n.locationName||'',actions,links:0,out:[],ox:p.x,oy:p.y};
+      list.push(node); byId.set(id,node); adj.set(node,[]);
+    }
+    for(const [id,n] of Object.entries(nodes)){
+      for(const b of n.branches||[]){
+        if(!byId.has(b)){
+          if(owner.has(b)){skipped++;byId.get(id).out.push({level:owner.get(b),id:b});continue}
+          throw new Error(`Level “${name}”, node “${id}”: branch “${b}” does not exist.`);
+        }
+        const k=id<b?id+'|'+b:b+'|'+id;
+        if(seen.has(k)) continue;
+        seen.add(k);
+        const a=byId.get(id), c=byId.get(b);
+        a.links++; c.links++;
+        if(Math.hypot(a.x-c.x,a.y-c.y)<0.01) zero++;
+        edges.push([a,c]); adj.get(a).push(c); adj.get(c).push(a);
+      }
+    }
+    const xs=list.map(n=>n.x), ys=list.map(n=>n.y);
+    const box=list.length?{x0:Math.min(...xs),x1:Math.max(...xs),y0:Math.min(...ys),y1:Math.max(...ys)}:{x0:0,x1:1,y0:0,y1:1};
+    return {name,floor:floors[name],list,byId,adj,edges,orig:edges.map(e=>[...e]),skipped,zero,pois:list.filter(n=>n.poi),box};
+  });
+  linkLifts(root,levels);
+  levels.site=siteName;
+  levels.root=root;
+  return levels;
+}
+function linkLifts(root,levels){
+  const by=new Map(levels.map(l=>[l.name,l]));
+  for(const lift of (root.liftConfig&&root.liftConfig.lifts)||[]){
+    const pts=[];
+    for(const d of lift.details||[]){const L=by.get(d.mapName), n=L&&L.byId.get(d.liftPoint); if(n) pts.push({L,n})}
+    for(const a of pts) for(const b of pts) if(a!==b&&a.L!==b.L) a.n.out.push({level:b.L.name,id:b.n.id,lift:lift.id});
+  }
+}
+function bfs(L,from,isGoal){
+  const prev=new Map([[from,null]]), q=[from];
+  for(let i=0;i<q.length;i++){
+    const n=q[i];
+    if(isGoal(n)){const p=[];for(let c=n;c;c=prev.get(c))p.unshift(c);return p}
+    for(const m of L.adj.get(n)||[]) if(!prev.has(m)){prev.set(m,n);q.push(m)}
+  }
+  return null;
+}
+// lift: optional lift id; when the route changes level it must use that lift
+function planRoute(levels,from,to,lift){
+  const A=levels[from.lv], B=levels[to.lv];
+  if(from.lv===to.lv){
+    const p=bfs(A,from.node,n=>n===to.node);
+    return p?{steps:[{type:'drive',lv:from.lv,path:p}]}:{error:'No route to destination.'};
+  }
+  const via=o=>o.level===B.name&&B.byId.has(o.id)&&(!lift||String(o.lift)===lift);
+  const p1=bfs(A,from.node,n=>n.out.some(via));
+  if(!p1) return {error:lift?`No route to lift ${lift} on the start level, or it does not go to ${B.name}.`:'No route to a level link on the start level.'};
+  const hold=p1[p1.length-1], link=hold.out.find(via), land=B.byId.get(link.id);
+  const p2=bfs(B,land,n=>n===to.node);
+  if(!p2) return {error:'No route to destination on the other level.'};
+  return {steps:[{type:'drive',lv:from.lv,path:p1},{type:'lift',from:from.lv,to:to.lv,at:hold.id,lift:link.lift},{type:'drive',lv:to.lv,path:p2}]};
+}
+/*PARSE_END*/
+
+const $=s=>document.querySelector(s);
+const cv=$('#cv'), ctx=cv.getContext('2d'), tip=$('#tip');
+const S={levels:[],cur:0,views:{},wp:true,labels:true,sensors:true,sel:null,hover:null,filter:'',error:'',start:null,dest:null,route:null,plan:true,edit:false,add:false,connect:false,del:false,linking:false,robots:[],robot:null,placing:false,ghost:null,draft:{name:'',speed:0.5,orientation:0,sensorRange:2,maxDetour:5}};
+let W=0,H=0;
+
+function lvl(){return S.levels[S.cur]}
+function view(){return S.views[S.cur]}
+function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
+
+function fit(){
+  const L=lvl(); if(!L) return;
+  const b=L.box, pad=40, bw=Math.max(b.x1-b.x0,1e-6), bh=Math.max(b.y1-b.y0,1e-6);
+  const s=Math.max(Math.min((W-2*pad)/bw,(H-2*pad)/bh),0.01);
+  S.views[S.cur]={s,ox:W/2-((b.x0+b.x1)/2)*s,oy:H/2+((b.y0+b.y1)/2)*s};
+}
+function sx(n){const v=view();return v.ox+n.x*v.s}
+function sy(n){const v=view();return v.oy-n.y*v.s}
+
+function draw(){
+  const dpr=window.devicePixelRatio||1;
+  cv.width=W*dpr; cv.height=H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,W,H);
+  const L=lvl(); if(!L||!view()) return;
+  const edge=css('--edge'), wp=css('--wp'), poi=css('--poi'), sel=css('--sel'), ink=css('--ink'), bg=css('--bg'), accent=css('--accent');
+  if(S.plan&&L.overlay&&L.overlay.img.complete&&L.overlay.img.naturalWidth){
+    const m=L.overlay.meta, v=view(), r=m.resolution;
+    ctx.globalAlpha=0.5;
+    if(matchMedia('(prefers-color-scheme:dark)').matches) ctx.filter='invert(1)';
+    ctx.drawImage(L.overlay.img, v.ox+m.origin[0]*v.s, v.oy-(m.origin[1]+m.imageHeight*r)*v.s, m.imageWidth*r*v.s, m.imageHeight*r*v.s);
+    ctx.filter='none'; ctx.globalAlpha=1;
+  }
+  ctx.lineWidth=1.5; ctx.strokeStyle=edge; ctx.beginPath();
+  for(const [a,b] of L.edges){ctx.moveTo(sx(a),sy(a));ctx.lineTo(sx(b),sy(b))}
+  ctx.stroke();
+  if(S.sel){
+    ctx.strokeStyle=sel; ctx.lineWidth=3; ctx.beginPath();
+    for(const [a,b] of L.edges) if(a===S.sel||b===S.sel){ctx.moveTo(sx(a),sy(a));ctx.lineTo(sx(b),sy(b))}
+    ctx.stroke();
+  }
+  if(S.route&&S.route.steps){
+    ctx.strokeStyle=accent; ctx.lineWidth=4; ctx.lineJoin='round';
+    for(const st of S.route.steps) if(st.type==='drive'&&st.lv===S.cur){ctx.beginPath();st.path.forEach((n,i)=>i?ctx.lineTo(sx(n),sy(n)):ctx.moveTo(sx(n),sy(n)));ctx.stroke()}
+  }
+  if(S.edit&&S.connect&&S.sel&&S.mouse){
+    const to=S.hover&&S.hover!==S.sel?[sx(S.hover),sy(S.hover)]:[S.mouse.x,S.mouse.y];
+    ctx.strokeStyle=accent; ctx.lineWidth=2; ctx.setLineDash([4,4]); ctx.beginPath();
+    ctx.moveTo(sx(S.sel),sy(S.sel)); ctx.lineTo(to[0],to[1]); ctx.stroke(); ctx.setLineDash([]);
+  }
+  if(S.edit&&S.del&&(S.hover||S.hoverEdge)){
+    ctx.strokeStyle=css('--err'); ctx.lineWidth=4; ctx.beginPath();
+    if(S.hover){for(const m of L.adj.get(S.hover)||[]){ctx.moveTo(sx(S.hover),sy(S.hover));ctx.lineTo(sx(m),sy(m))}}
+    else{ctx.moveTo(sx(S.hoverEdge.a),sy(S.hoverEdge.a));ctx.lineTo(sx(S.hoverEdge.c),sy(S.hoverEdge.c))}
+    ctx.stroke();
+  }
+  if(S.hoverEdge&&S.edit&&S.add&&!S.del){
+    ctx.strokeStyle=accent; ctx.lineWidth=3; ctx.setLineDash([6,4]); ctx.beginPath();
+    ctx.moveTo(sx(S.hoverEdge.a),sy(S.hoverEdge.a)); ctx.lineTo(sx(S.hoverEdge.c),sy(S.hoverEdge.c)); ctx.stroke(); ctx.setLineDash([]);
+  }
+  if(S.wp){ctx.fillStyle=wp;for(const n of L.list) if(!n.poi){ctx.beginPath();ctx.arc(sx(n),sy(n),2.5,0,7);ctx.fill()}}
+  ctx.fillStyle=poi;
+  for(const n of L.pois){ctx.beginPath();ctx.arc(sx(n),sy(n),5,0,7);ctx.fill()}
+  ctx.strokeStyle=accent; ctx.lineWidth=2;
+  for(const n of L.list) if(n.added){ctx.beginPath();ctx.arc(sx(n),sy(n),5,0,7);ctx.stroke()}
+  for(const [m,c,t] of [[S.start,'#15803d','S'],[S.dest,'#b91c1c','D']]) if(m&&m.lv===S.cur){
+    const x=sx(m.node), y=sy(m.node);
+    ctx.fillStyle=c; ctx.beginPath(); ctx.arc(x,y,8,0,7); ctx.fill();
+    ctx.fillStyle='#fff'; ctx.font='bold 10px ui-sans-serif,system-ui,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(t,x,y+0.5); ctx.textAlign='left';
+  }
+  ctx.lineWidth=2.5;
+  for(const n of [S.hover,S.sel]){if(!n)continue;ctx.strokeStyle=n===S.hover&&S.edit&&S.del?css('--err'):n===S.sel?sel:ink;ctx.beginPath();ctx.arc(sx(n),sy(n),9,0,7);ctx.stroke()}
+  if(S.labels){
+    ctx.font='11px ui-sans-serif,system-ui,sans-serif'; ctx.textBaseline='middle';
+    const placed=[];
+    const order=[...L.pois].sort((a,b)=>(b===S.sel)-(a===S.sel));
+    for(const n of order){
+      const x=sx(n)+9, y=sy(n), w=ctx.measureText(n.poi).width, r=[x,y-7,x+w,y+7];
+      if(x<-w||x>W||y<0||y>H) continue;
+      if(n!==S.sel && placed.some(p=>r[0]<p[2]&&r[2]>p[0]&&r[1]<p[3]&&r[3]>p[1])) continue;
+      placed.push(r);
+      ctx.lineWidth=3; ctx.strokeStyle=bg; ctx.strokeText(n.poi,x,y);
+      ctx.fillStyle=n===S.sel?sel:ink; ctx.fillText(n.poi,x,y);
+    }
+  }
+  drawObstacles(L);
+  drawRobots(L,{sel,ink,bg});
+}
+function drawRobots(L,c){
+  const rad=Math.max(9,0.3*view().s);
+  const one=(p,deg,fill,alpha)=>{
+    const x=sx(p), y=sy(p), a=-deg*Math.PI/180;
+    ctx.globalAlpha=alpha; ctx.fillStyle=fill; ctx.beginPath(); ctx.arc(x,y,rad,0,7); ctx.fill();
+    ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke();
+    ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+Math.cos(a)*rad,y+Math.sin(a)*rad); ctx.stroke();
+    ctx.globalAlpha=1; return [x,y];
+  };
+  // Planned paths, one colour per robot; the selected robot's path is drawn last and thicker.
+  ctx.font='bold 11px ui-sans-serif,system-ui,sans-serif'; ctx.textBaseline='middle';
+  for(const r of [...S.robots.filter(x=>x!==S.robot),...(S.robot?[S.robot]:[])]){
+    const t=taskOf(r), route=r.route||[]; if(!t||!route.length) continue;
+    const width=r===S.robot?6:4;
+    ctx.strokeStyle=r.color; ctx.lineWidth=width; ctx.lineJoin=ctx.lineCap='round';
+    // The route still ahead, as the robot will drive it (detours round obstacles included): from the robot through
+    // r.route[r.routeIndex..]; points before routeIndex have been driven. A lift is labelled where the robot boards it.
+    let pts=r.level===L.name?[r.position]:[];
+    const flush=()=>{if(pts.length>1){ctx.beginPath();pts.forEach((n,j)=>j?ctx.lineTo(sx(n),sy(n)):ctx.moveTo(sx(n),sy(n)));ctx.stroke()}pts=[]};
+    for(let i=r.routeIndex||0;i<route.length;i++){
+      const p=route[i], next=route[i+1];
+      if(p.level!==L.name){flush();continue}
+      pts.push(p);
+      if(next&&next.level!==p.level){
+        flush();
+        const txt=(p.lift!=null?'Lift '+p.lift:'Lift')+' to '+next.level;
+        ctx.lineWidth=3; ctx.strokeStyle=c.bg; ctx.strokeText(txt,sx(p)+10,sy(p)-14); ctx.fillStyle=r.color; ctx.fillText(txt,sx(p)+10,sy(p)-14);
+        ctx.strokeStyle=r.color; ctx.lineWidth=width;
+      }
+    }
+    flush();
+    const end=route[route.length-1];
+    if(end.level===L.name){
+      const x=sx(end),y=sy(end);
+      ctx.fillStyle=r.color; ctx.strokeStyle='#fff'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(x,y-10); ctx.lineTo(x+10,y); ctx.lineTo(x,y+10); ctx.lineTo(x-10,y); ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+  }
+  ctx.lineCap='butt';
+  for(const r of S.robots) if(r.level===L.name){
+    if(S.sensors&&r.sensorRange>0){
+      const blocked=r.blockedBy&&r.blockedBy.length, sr=r.sensorRange*view().s;
+      ctx.save(); ctx.strokeStyle=ctx.fillStyle=blocked?css('--err'):r.color;
+      ctx.globalAlpha=blocked?0.12:0.06; ctx.beginPath(); ctx.arc(sx(r.position),sy(r.position),sr,0,7); ctx.fill();
+      ctx.globalAlpha=blocked?0.9:0.6; ctx.lineWidth=blocked?2:1.5; ctx.setLineDash([5,5]); ctx.stroke(); ctx.restore();
+    }
+    const [x,y]=one(r.position,r.orientation,STATE_COLOR[r.state],1);
+    if(r===S.robot){ctx.strokeStyle=c.sel;ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(x,y,rad+4,0,7);ctx.stroke()}
+    ctx.lineWidth=3; ctx.strokeStyle=c.bg; ctx.strokeText(r.name,x+rad+6,y); ctx.fillStyle=c.ink; ctx.fillText(r.name,x+rad+6,y);
+  }
+  if(S.placing&&S.ghost) one(S.ghost,+S.draft.orientation||0,STATE_COLOR.Idle,0.5);
+}
+
+function resize(){
+  const r=$('#stage').getBoundingClientRect(); W=r.width; H=r.height;
+  if(lvl()&&!view()) fit();
+  draw();
+}
+
+function hit(px,py){
+  const L=lvl(); if(!L||!view()) return null;
+  let best=null,bd=144;
+  for(const n of L.list){
+    if(!S.wp&&!n.poi) continue;
+    const d=(sx(n)-px)**2+(sy(n)-py)**2;
+    if(d<bd){bd=d;best=n}
+  }
+  return best;
+}
+
+function zoomAt(px,py,f){
+  const v=view(); if(!v) return;
+  const wx=(px-v.ox)/v.s, wy=(v.oy-py)/v.s;
+  v.s=Math.min(Math.max(v.s*f,0.05),400);
+  v.ox=px-wx*v.s; v.oy=py+wy*v.s; draw();
+}
+
+function robotAt(px,py){
+  const L=lvl(); if(!L||!view()) return null;
+  const rad=Math.max(10,0.3*view().s);
+  return S.robots.filter(r=>r.level===L.name&&(sx(r.position)-px)**2+(sy(r.position)-py)**2<=rad*rad).pop()||null;
+}
+
+let drag=null;
+cv.addEventListener('pointerdown',e=>{
+  cv.setPointerCapture(e.pointerId); tip.style.display='none';
+  const r=cv.getBoundingClientRect(), px=e.clientX-r.left, py=e.clientY-r.top, rb=S.placing||S.placingObs||S.picking?null:robotAt(px,py);
+  drag={x:e.clientX,y:e.clientY,moved:false,robot:rb,node:!rb&&S.edit?hit(px,py):null};cv.classList.add('drag');
+});
+cv.addEventListener('pointermove',e=>{
+  const r=cv.getBoundingClientRect(), px=e.clientX-r.left, py=e.clientY-r.top;
+  if(drag){
+    const dx=e.clientX-drag.x, dy=e.clientY-drag.y;
+    if(Math.abs(dx)+Math.abs(dy)>3) drag.moved=true;
+    if(drag.moved&&view()){
+      if(drag.robot){const v=view();drag.robot.position.x=(px-v.ox)/v.s;drag.robot.position.y=(v.oy-py)/v.s;draw()}
+      else if(drag.node){if(!drag.saved){remember(lvl());drag.saved=true}const v=view();drag.node.x=(px-v.ox)/v.s;drag.node.y=(v.oy-py)/v.s;draw()}
+      else{view().ox+=dx;view().oy+=dy;drag.x=e.clientX;drag.y=e.clientY;draw()}
+    }
+    return;
+  }
+  const n=hit(px,py), rb=S.placing||S.placingObs||S.picking?null:robotAt(px,py);
+  if(S.placing&&view()){const v=view();S.ghost=n?{x:n.x,y:n.y}:{x:(px-v.ox)/v.s,y:(v.oy-py)/v.s};draw()}
+  if(S.placingObs&&view()){const v=view();S.obsGhost={x:(px-v.ox)/v.s,y:(v.oy-py)/v.s};draw()}
+  if(S.edit&&S.connect&&S.sel){S.mouse={x:px,y:py};draw()}
+  const he=S.edit&&(S.add||S.del)&&!n?edgeAt(lvl(),px,py):null;
+  if((he&&he.e)!==(S.hoverEdge&&S.hoverEdge.e)){S.hoverEdge=he;draw()}
+  if(n!==S.hover){S.hover=n;draw()}
+  if(rb||n){
+    tip.textContent='';
+    const b=el('b',rb?rb.name:n.poi||n.id), t=el('div',null,'mute'); tip.append(b,t);
+    if(rb) t.textContent=`${rb.state} · x ${rb.position.x.toFixed(2)}, y ${rb.position.y.toFixed(2)} · ${Math.round(rb.orientation)}°`;
+    else t.textContent=`x ${n.x.toFixed(2)}, y ${n.y.toFixed(2)}`+(n.poi?` (${n.id})`:'');
+    tip.style.display='block'; tip.style.left=Math.min(px+14,W-220)+'px'; tip.style.top=Math.min(py+14,H-60)+'px';
+  } else tip.style.display='none';
+});
+cv.addEventListener('pointerup',e=>{
+  const r=cv.getBoundingClientRect();
+  if(drag&&!drag.moved){
+    const px=e.clientX-r.left, py=e.clientY-r.top, t=hit(px,py), L=lvl(), v=view();
+    if(S.placing&&L){ if(t) addRobot(t.x,t.y); else addRobot((px-v.ox)/v.s,(v.oy-py)/v.s); }
+    else if(S.placingObs&&L){ addObstacle((px-v.ox)/v.s,(v.oy-py)/v.s); }
+    else if(S.picking){ if(t) assignTask(S.picking,t,L.name,S.taskDraft.lift); }
+    else if(drag.robot) S.robot=drag.robot;
+    // Delete tool: a node goes with all its links; a link on its own just removes that link.
+    else if(S.edit&&S.del&&L){
+      const eh=t?null:edgeAt(L,px,py);
+      if(t){remember(L);removeNode(L,t)} else if(eh){remember(L);toggleLink(L,eh.a,eh.c)}
+      S.hover=null; S.hoverEdge=null;
+    }
+    else if(S.linking&&S.sel){ if(t&&t!==S.sel){remember(L);toggleLink(L,S.sel,t)} S.linking=false; }
+    // Connect mode (or Shift+click in edit mode): link the selected node to the clicked one, then carry on from it.
+    else if(S.edit&&(S.connect||e.shiftKey)&&S.sel&&t&&t!==S.sel){remember(L);toggleLink(L,S.sel,t);S.sel=t}
+    else if(S.edit&&S.add&&!t&&L){
+      const eh=edgeAt(L,px,py);
+      remember(L);
+      S.sel=eh?splitEdge(L,eh.a,eh.c,eh.x,eh.y):addNode(L,(px-v.ox)/v.s,(v.oy-py)/v.s,S.sel);
+    }
+    else{S.sel=t; if(!t) S.robot=null}
+    side();draw();
+  }
+  else if(drag&&drag.robot){S.robot=drag.robot;robotMoved(drag.robot);side();draw()}
+  else if(drag&&drag.node){S.sel=drag.node;side();draw()}
+  drag=null;cv.classList.remove('drag');
+});
+cv.addEventListener('pointerleave',()=>{tip.style.display='none';S.hoverEdge=null;S.ghost=null;S.obsGhost=null;S.mouse=null;if(S.hover){S.hover=null}draw()});
+cv.addEventListener('wheel',e=>{e.preventDefault();const r=cv.getBoundingClientRect();zoomAt(e.clientX-r.left,e.clientY-r.top,e.deltaY<0?1.2:1/1.2)},{passive:false});
+$('#zin').onclick=()=>zoomAt(W/2,H/2,1.4);
+$('#zout').onclick=()=>zoomAt(W/2,H/2,1/1.4);
+$('#fit').onclick=()=>{fit();draw()};
+
+function el(tag,text,cls){const e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e}
+
+// Per-viewer UI preferences (collapsed sections, hidden panel); the page works without storage.
+function store(k,v){try{if(v===undefined)return localStorage.getItem('navviewer.'+k);localStorage.setItem('navviewer.'+k,v)}catch(e){return null}}
+const SECTIONS=['levels','robots','tasks','obstacles','show','level','selected','route','pois'];
+let closed=new Set();
+try{closed=new Set(JSON.parse(store('closed')||'[]'))}catch(e){}
+function section(a,key,title){
+  const d=el('details',null,'sec'), body=el('div',null,'sec-body');
+  d.open=!closed.has(key);
+  d.ontoggle=()=>{d.open?closed.delete(key):closed.add(key);store('closed',JSON.stringify([...closed]))};
+  d.append(el('summary',title),body); a.append(d); return body;
+}
+function setPanel(open){
+  $('main').classList.toggle('noside',!open); $('#panel').setAttribute('aria-expanded',String(open)); store('panel',open?'open':'closed');
+}
+$('#panel').onclick=()=>setPanel($('main').classList.contains('noside'));
+if(store('panel')==='closed') setPanel(false);
+
+// Virtual robots and tasks, planned in the page (no API yet). Fields follow the requirements draft:
+// robot object (7.3) plus its level and route colour, task object (7.4) plus the planned steps.
+// Stuck: blocked with no way round at all (beyond the draft's six states)
+const STATE_COLOR={Idle:'#64748b',Moving:'#2563eb',Busy:'#d97706',Waiting:'#a16207',Paused:'#7c3aed',Stuck:'#c2410c',Completed:'#15803d',Error:'#dc2626'};
+const TASK_COLOR={Queued:'#64748b',Running:'#2563eb',Waiting:'#a16207',Completed:'#15803d',Failed:'#dc2626'};
+const ROUTE_COLORS=['#2563eb','#db2777','#059669','#ea580c','#7c3aed','#0891b2','#ca8a04','#e11d48'];
+const FAILURE={ROBOT_BUSY:1005,NO_ROUTE:1007,TASK_CANCELLED:1010};
+const ACTIVE=new Set(['Queued','Running','Waiting']);
+Object.assign(S,{tasks:[],msg:'',picking:null,taskDraft:{dest:'',lift:''},obstacles:[],placingObs:false,obsGhost:null,obsDraft:{radius:0.5},moveDraft:{distance:1,angle:90}});
+let robotSeq=0, taskSeq=0;
+function nextColor(){return ROUTE_COLORS.find(c=>!S.robots.some(r=>r.color===c))||ROUTE_COLORS[S.robots.length%ROUTE_COLORS.length]}
+// z is the level number (the node pose.z is a heading in radians, not a floor)
+function addRobot(x,y){
+  const id='robot_'+(++robotSeq), d=S.draft;
+  const r={robotID:id,name:d.name.trim()||'Robot '+robotSeq,state:'Idle',level:lvl().name,position:{x,y,z:lvl().z},
+    orientation:Number.isFinite(+d.orientation)?+d.orientation:0,speed:+d.speed>0?+d.speed:0.5,activeTask:null,route:[],routeProgress:0,color:nextColor(),
+    sensorRange:+d.sensorRange>0?+d.sensorRange:2,maxDetour:+d.maxDetour>=0&&d.maxDetour!==''?+d.maxDetour:5,blockedBy:[]};
+  S.robots.push(r); S.robot=r; S.placing=false; S.ghost=null; d.name='';
+  return r;
+}
+function taskOf(r){const t=r.activeTask&&S.tasks.find(t=>t.taskID===r.activeTask);return t&&ACTIVE.has(t.status)?t:null}
+function nearestNode(L,p){let best=null,bd=Infinity;for(const n of L.list){const d=(n.x-p.x)**2+(n.y-p.y)**2;if(d<bd){bd=d;best=n}}return best}
+
+// Route planning (requirements draft, section 10): BFS from the robot's nearest node to the destination;
+// on another level it drives to the lift, takes it, then drives on. Fills task.steps and robot.route.
+function planTask(r,t){
+  const lv=S.levels.findIndex(L=>L.name===r.level), dl=S.levels.findIndex(L=>L.name===t.destinationLevel);
+  const start=lv>=0&&nearestNode(S.levels[lv],r.position), dest=dl>=0&&S.levels[dl].byId.get(t.destination);
+  const res=!dest?{error:'Destination is no longer on the map.'}:!start?{error:`${r.name} is not on a level with nodes.`}
+    :planRoute(S.levels,{lv,node:start},{lv:dl,node:dest},t.lift);
+  if(res.error){
+    finishTask(r,t,'Failed','No route to destination.',{failureCode:FAILURE.NO_ROUTE,failureMessage:res.error});
+    return false;
+  }
+  t.steps=res.steps;
+  r.route=[];
+  for(const s of res.steps) if(s.type==='drive') for(const n of s.path) r.route.push({level:S.levels[s.lv].name,nodeID:n.id,x:n.x,y:n.y,z:S.levels[s.lv].z});
+  r.routeProgress=0;
+  return true;
+}
+function finishTask(r,t,status,outcome,error){
+  t.status=status; t.outcome=outcome; t.error=error||null;
+  if(r&&r.activeTask===t.taskID){r.activeTask=null;r.route=[];r.routeProgress=0}
+}
+// One task at a time per robot (requirements draft 5.3).
+function assignTask(r,node,levelName,lift){
+  S.picking=null;
+  const cur=taskOf(r);
+  if(cur){S.msg=`${r.name} already has ${cur.taskID} (${cur.status}). Stop it first. [${FAILURE.ROBOT_BUSY}]`;return}
+  const t={taskID:'task_'+(++taskSeq),robotID:r.robotID,destination:node.id,destinationName:node.poi||node.id,destinationLevel:levelName,lift:lift||null,
+    status:'Queued',createdAt:new Date().toISOString(),outcome:null,error:null,steps:[]};
+  S.tasks.push(t); r.activeTask=t.taskID;
+  S.msg=planTask(r,t)?'':`${t.taskID} failed: ${t.error.failureMessage} [${t.error.failureCode}]`;
+}
+// A robot was dragged to a new start point: re-plan its queued task from there.
+function robotMoved(r){const t=taskOf(r);if(t)planTask(r,t)}
+// A robot setting was changed in the panel (api.js sends it to the server).
+function robotChanged(r,fields){}
+// Low-level move (requirements draft 8.3 robot:move). Here it happens at once; api.js sends it to the server,
+// which drives the robot there over time. amount: metres for forward / backward, degrees for rotate (+ left, - right).
+function moveRobot(r,command,amount){
+  if(command==='rotate') r.orientation=((r.orientation+amount)%360+540)%360-180;
+  else if(command!=='stop'){const a=r.orientation*Math.PI/180, d=command==='backward'?-amount:amount; r.position.x+=Math.cos(a)*d; r.position.y+=Math.sin(a)*d}
+}
+function stopRobot(r){
+  const t=taskOf(r);
+  if(t) finishTask(r,t,'Failed','Cancelled: robot was stopped.',{failureCode:FAILURE.TASK_CANCELLED,failureMessage:'Robot was stopped before the task finished.'});
+}
+// Stop is a pause (robot:stop): the robot holds its task or move until Resume (robot:start), or Cancel (task:cancel,
+// or robot:move stop for a move). Here they only mark the robot; api.js sends them to the server.
+function pauseRobot(r){r.stopped=true}
+function resumeRobot(r){r.stopped=false}
+function cancelTask(r,t){stopRobot(r);r.stopped=false}
+// Buttons for what the robot is doing: Stop, or Resume / Cancel while stopped; and Emergency stop.
+function stopControls(rs,r,cancelLabel,cancel){
+  const row=el('div',null,'row');
+  if(r.stopped){
+    const go=el('button','Resume','primary'); go.title='Carry on from where it stopped (robot:start)';
+    const no=el('button',cancelLabel);
+    go.onclick=()=>{resumeRobot(r);side();draw()}; no.onclick=()=>{cancel();side();draw()};
+    row.append(go,no);
+  }else{
+    const st=el('button','Stop'); st.title='Pause: the robot holds where it is until you resume it (robot:stop)';
+    st.onclick=()=>{pauseRobot(r);side();draw()}; row.append(st);
+  }
+  const es=el('button','Emergency stop'); es.title='Stop at once and end the task; the robot goes to Error (robot:emergency-stop)';
+  es.onclick=()=>{stopRobot(r);side();draw()}; row.append(es);
+  rs.append(row);
+}
+// Re-plan queued tasks after the map or a robot's start point changes.
+function replanRobots(){for(const r of S.robots){const t=taskOf(r);if(t&&t.status==='Queued')planTask(r,t)}}
+
+function focusRobot(r){
+  const i=S.levels.findIndex(l=>l.name===r.level); if(i<0) return;
+  if(i!==S.cur){S.cur=i;S.sel=null;S.hover=null;S.hoverEdge=null}
+  if(!S.views[i]) fit();
+  const v=view(); v.ox=W/2-r.position.x*v.s; v.oy=H/2+r.position.y*v.s;
+}
+function field(box,label,value,type,set,attrs,rerender){
+  const lab=el('label',null,'field'), i=el('input'); i.type=type; i.value=value; Object.assign(i,attrs||{});
+  i.oninput=()=>{set(i.value);draw()}; if(rerender) i.onchange=side;
+  lab.append(el('span',label),i); box.append(lab); return i;
+}
+function robotsUI(a){
+  const rs=section(a,'robots',`Robots (${S.robots.length})`);
+  if(S.msg){const p=el('p',S.msg,'msg');p.setAttribute('role','alert');rs.append(p)}
+  if(S.placing){
+    rs.append(el('p',`Click on the map to place ${S.draft.name.trim()||'Robot '+(robotSeq+1)}. Clicking a node snaps to it. Esc cancels.`,'hint'));
+    const cb=el('button','Cancel'); cb.onclick=()=>{S.placing=false;S.ghost=null;side();draw()}; rs.append(cb);
+  }else{
+    field(rs,'Name',S.draft.name,'text',v=>S.draft.name=v,{placeholder:'Robot '+(robotSeq+1)});
+    field(rs,'Speed (m/s)',S.draft.speed,'number',v=>S.draft.speed=v,{min:0.05,step:0.1});
+    field(rs,'Heading (°)',S.draft.orientation,'number',v=>S.draft.orientation=v,{step:15});
+    field(rs,'Sensor range (m)',S.draft.sensorRange,'number',v=>S.draft.sensorRange=v,{min:0.1,step:0.5});
+    field(rs,'Max detour (m)',S.draft.maxDetour,'number',v=>S.draft.maxDetour=v,{min:0,step:1});
+    const row=el('div',null,'row'), ab=el('button','Add robot on map','primary');
+    ab.onclick=()=>{S.placing=true;S.placingObs=false;S.picking=null;S.linking=false;side();draw()}; row.append(ab);
+    if(S.sel){const hb=el('button','Add at selected node'); hb.onclick=()=>{addRobot(S.sel.x,S.sel.y);side();draw()}; row.append(hb)}
+    rs.append(row);
+  }
+  if(S.robots.length){
+    const ul=el('ul',null,'robots');
+    for(const r of S.robots){
+      const b=el('button',null,r===S.robot?'on':''), dot=el('span',null,'dot'); dot.style.background=STATE_COLOR[r.state];
+      dot.style.boxShadow=`0 0 0 2px ${r.color}`;
+      b.append(dot,el('span',r.name),el('small',`${r.state} · ${r.activeTask||r.level.split('#')[0]}`));
+      b.onclick=()=>{S.robot=r;focusRobot(r);side();draw()};
+      const li=el('li'); li.append(b); ul.append(li);
+    }
+    rs.append(ul);
+  }
+  const r=S.robot; if(!r) return;
+  rs.append(el('p',`Selected: ${r.name}`,'sub'));
+  field(rs,'Name',r.name,'text',v=>{if(v.trim()){r.name=v.trim();robotChanged(r,{name:r.name})}},null,true);
+  field(rs,'Speed (m/s)',r.speed,'number',v=>{if(+v>0){r.speed=+v;robotChanged(r,{speed:r.speed})}},{min:0.05,step:0.1});
+  // sensor range: how far it senses obstacles; max detour: how far a reroute may stray from the planned path
+  field(rs,'Sensor range (m)',r.sensorRange,'number',v=>{if(+v>0){r.sensorRange=+v;robotChanged(r,{sensorRange:r.sensorRange})}},{min:0.1,step:0.5});
+  field(rs,'Max detour (m)',r.maxDetour,'number',v=>{if(v!==''&&+v>=0){r.maxDetour=+v;robotChanged(r,{maxDetour:r.maxDetour})}},{min:0,step:1});
+  field(rs,'Heading (°)',Math.round(r.orientation*10)/10,'number',v=>{if(v!==''&&Number.isFinite(+v))r.orientation=+v},{step:15});
+  field(rs,'Path colour',r.color,'color',v=>r.color=v,null,true);
+  const d=el('dl');
+  for(const [k,v] of [['ID',r.robotID],['State',r.stopped&&r.state!=='Paused'?r.state+' (stopped)':r.state],['Level',r.level],['Position',`${r.position.x.toFixed(3)}, ${r.position.y.toFixed(3)}`],['Route progress',Math.round(r.routeProgress*100)+'%'],...(r.blockedBy&&r.blockedBy.length?[['Blocked by',r.blockedBy.join(', ')]]:[])]) d.append(el('dt',k),el('dd',v));
+  rs.append(d, el('p',taskOf(r)?'On a task: while it is Waiting, Stuck or Paused you can drag it out of the way by hand. It plans its route again from where you drop it.':'Drag the robot on the map to move its start point.','mute'));
+  const row=el('div',null,'row'), cb=el('button','Centre on map'), db=el('button','Delete robot');
+  cb.onclick=()=>{focusRobot(r);side();draw()};
+  db.onclick=()=>{stopRobot(r);S.robots=S.robots.filter(x=>x!==r);S.tasks=S.tasks.filter(t=>t.robotID!==r.robotID);S.robot=null;if(S.picking===r)S.picking=null;side();draw()};
+  row.append(cb,db); rs.append(row);
+  moveUI(rs,r);
+  taskPanel(rs,r);
+}
+// Movement controls for testing single commands (requirements draft 5.1): drive straight or turn on the spot.
+function moveUI(rs,r){
+  rs.append(el('p','Move (robot:move)','sub'));
+  if(taskOf(r)){rs.append(el('p','On a task: cancel it (or let it finish) to move the robot by hand.','mute'));return}
+  const m=r.activeMove;
+  if(m){
+    rs.append(el('p',(r.stopped?'Stopped: ':'')+(m.command==='rotate'?`turning ${m.angle}°, ${Math.round(m.done)}° done`:`${m.command} ${m.distance} m, ${m.done.toFixed(2)} m done`),'hint'));
+    stopControls(rs,r,'Cancel move',()=>moveRobot(r,'stop',0));
+    return;
+  }
+  field(rs,'Distance (m)',S.moveDraft.distance,'number',v=>S.moveDraft.distance=v,{min:0.1,step:0.5});
+  field(rs,'Angle (°)',S.moveDraft.angle,'number',v=>S.moveDraft.angle=v,{min:1,step:15});
+  const row=el('div',null,'row'), dist=()=>+S.moveDraft.distance, ang=()=>+S.moveDraft.angle;
+  for(const [label,command,amount] of [['Forward','forward',dist],['Backward','backward',dist],['Turn left','rotate',ang],['Turn right','rotate',()=>-ang()]]){
+    const b=el('button',label); b.onclick=()=>{moveRobot(r,command,amount());side();draw()}; row.append(b);
+  }
+  rs.append(row);
+}
+function stepText(st){return st.type==='drive'?`Drive on ${S.levels[st.lv].name}: ${st.path.length} nodes`:`Lift ${st.lift!=null?liftName(st.lift)+' ':''}at ${st.at}: ${S.levels[st.from].name} → ${S.levels[st.to].name}`}
+function taskPanel(rs,r){
+  rs.append(el('p','Task','sub'));
+  const t=taskOf(r);
+  if(t){
+    const d=el('dl');
+    for(const [k,v] of [['Task ID',t.taskID],['Status',t.status],['Destination',`${t.destinationName} (${t.destinationLevel})`],['Route',`${r.route.length} points`],...(t.note?[['Now',t.note]]:[])]) d.append(el('dt',k),el('dd',v));
+    const ol=el('ol',null,'steps');
+    for(const st of t.steps){
+      const b=el('button',stepText(st));
+      b.onclick=()=>{S.cur=st.type==='drive'?st.lv:st.from;S.sel=null;S.hover=null;if(!S.views[S.cur])fit();side();draw()};
+      const li=el('li'); li.append(b); ol.append(li);
+    }
+    rs.append(d,ol);
+    stopControls(rs,r,'Cancel task',()=>cancelTask(r,t));
+    return;
+  }
+  const last=S.tasks.filter(x=>x.robotID===r.robotID).pop();
+  if(last) rs.append(el('p',`Last: ${last.taskID} ${last.status}${last.error?' – '+last.error.failureMessage:''}`,last.status==='Failed'?'msg':'mute'));
+  if(S.picking===r){
+    rs.append(el('p',`Click a node on the map as ${r.name}'s destination. Esc cancels.`,'hint'));
+    const cb=el('button','Cancel'); cb.onclick=()=>{S.picking=null;side()}; rs.append(cb);
+    return;
+  }
+  const lab=el('label',null,'field'), sel=el('select');
+  sel.append(new Option('Choose a point of interest…',''));
+  S.levels.forEach((L,i)=>{
+    if(!L.pois.length) return;
+    const g=el('optgroup'); g.label=L.name;
+    for(const n of [...L.pois].sort((p,q)=>p.poi.localeCompare(q.poi))) g.append(new Option(n.poi,i+'|'+n.id));
+    sel.append(g);
+  });
+  sel.value=S.taskDraft.dest; sel.onchange=()=>{S.taskDraft.dest=sel.value;side()};
+  lab.append(el('span','Destination'),sel); rs.append(lab);
+  liftField(rs,r);
+  const row=el('div',null,'row'), ab=el('button','Assign task','primary'), pb=el('button','Pick destination on map');
+  ab.disabled=!S.taskDraft.dest;
+  ab.onclick=()=>{
+    const v=S.taskDraft.dest, k=v.indexOf('|'), L=S.levels[+v.slice(0,k)], n=L&&L.byId.get(v.slice(k+1));
+    if(n) assignTask(r,n,L.name,S.taskDraft.lift);
+    side();draw();
+  };
+  pb.onclick=()=>{S.picking=r;S.placing=false;S.linking=false;side()};
+  row.append(ab,pb); rs.append(row);
+}
+function liftName(id){const l=((S.levels.root.liftConfig||{}).lifts||[]).find(x=>String(x.id)===String(id));return l&&l.name&&l.name!==String(id)?`${l.name} (${id})`:String(id)}
+// Lift choice when the destination is on another level. Auto takes the nearest lift that goes there.
+function liftField(rs,r){
+  const v=S.taskDraft.dest, dl=v?S.levels[+v.slice(0,v.indexOf('|'))]:null, L=S.levels.find(x=>x.name===r.level);
+  if(!L||dl===L) return;
+  const lifts=new Map();
+  for(const n of L.list) for(const o of n.out) if(o.lift!=null&&(!dl||o.level===dl.name)&&!lifts.has(String(o.lift))) lifts.set(String(o.lift),n.id);
+  if(!lifts.size&&!dl) return;
+  if(!lifts.has(S.taskDraft.lift)) S.taskDraft.lift='';
+  const lab=el('label',null,'field'), sel=el('select');
+  sel.append(new Option(lifts.size?'Auto (nearest lift)':'No lift goes there',''));
+  for(const [id,at] of lifts) sel.append(new Option(`${liftName(id)} at ${at}`,id));
+  sel.disabled=!lifts.size; sel.value=S.taskDraft.lift; sel.onchange=()=>{S.taskDraft.lift=sel.value};
+  lab.append(el('span','Lift'),sel); rs.append(lab);
+}
+// Task panel (requirements draft 5.1): every task with its status, newest first.
+function tasksUI(a){
+  const list=[...S.tasks].reverse();
+  const ts=section(a,'tasks',`Tasks (${list.length})`);
+  if(!list.length){ts.append(el('p','No tasks yet. Select a robot to assign one.','mute'));return}
+  const ul=el('ul',null,'robots');
+  for(const t of list){
+    const r=S.robots.find(x=>x.robotID===t.robotID), b=el('button'), dot=el('span',null,'dot');
+    dot.style.background=TASK_COLOR[t.status];
+    b.append(dot,el('span',`${t.taskID} · ${r?r.name:t.robotID||'unassigned'} → ${t.destinationName}`),el('small',t.status));
+    if(t.error) b.title=t.error.failureMessage;
+    b.disabled=!r; b.onclick=()=>{S.robot=r;focusRobot(r);side();draw()};
+    const li=el('li'); li.append(b); ul.append(li);
+  }
+  ts.append(ul);
+}
+
+// Obstacles (requirements draft 10.3): circles on a level, radius in map units. Robots do not react to them yet:
+// no stop, wait or reroute.
+let obstacleSeq=0;
+function addObstacle(x,y){
+  const L=lvl(), radius=+S.obsDraft.radius>0?+S.obsDraft.radius:0.5;
+  S.obstacles.push({obstacleID:'obstacle_'+(++obstacleSeq),level:L.name,x,y,z:L.z,radius});
+  S.placingObs=false; S.obsGhost=null;
+}
+function removeObstacle(o){S.obstacles=S.obstacles.filter(x=>x!==o)}
+function drawObstacles(L){
+  const err=css('--err'), s=view().s;
+  const one=(o,alpha)=>{
+    const x=sx(o), y=sy(o), rad=Math.max(o.radius*s,4), k=rad*0.6;
+    ctx.globalAlpha=alpha*0.25; ctx.fillStyle=err; ctx.beginPath(); ctx.arc(x,y,rad,0,7); ctx.fill();
+    ctx.globalAlpha=alpha; ctx.strokeStyle=err; ctx.lineWidth=2; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x-k,y-k); ctx.lineTo(x+k,y+k); ctx.moveTo(x+k,y-k); ctx.lineTo(x-k,y+k); ctx.stroke();
+    ctx.globalAlpha=1;
+  };
+  for(const o of S.obstacles) if(o.level===L.name) one(o,1);
+  if(S.placingObs&&S.obsGhost) one({...S.obsGhost,radius:+S.obsDraft.radius>0?+S.obsDraft.radius:0.5},0.5);
+}
+function obstaclesUI(a){
+  const L=lvl(), here=S.obstacles.filter(o=>o.level===L.name);
+  const os=section(a,'obstacles',`Obstacles (${S.obstacles.length})`);
+  if(S.placingObs){
+    os.append(el('p',`Click on the map to place an obstacle on ${L.name}. Esc cancels.`,'hint'));
+    const cb=el('button','Cancel'); cb.onclick=()=>{S.placingObs=false;S.obsGhost=null;side();draw()}; os.append(cb);
+  }else{
+    field(os,'Radius (m)',S.obsDraft.radius,'number',v=>S.obsDraft.radius=v,{min:0.05,step:0.1});
+    const row=el('div',null,'row'), ab=el('button','Add obstacle on map','primary');
+    ab.onclick=()=>{S.placingObs=true;S.placing=false;S.picking=null;S.linking=false;side();draw()};
+    row.append(ab); os.append(row);
+  }
+  if(here.length){
+    const ul=el('ul',null,'obstacles');
+    for(const o of here){
+      const li=el('li'), rm=el('button','Remove'); rm.onclick=()=>{removeObstacle(o);side();draw()};
+      li.append(el('span',`${o.obstacleID} · ${o.x.toFixed(2)}, ${o.y.toFixed(2)} · r ${o.radius} m`),rm); ul.append(li);
+    }
+    os.append(ul);
+  }else os.append(el('p',S.obstacles.length?'None on this level.':'No obstacles yet.','mute'));
+  os.append(el('p','Robots drive through obstacles for now (no stop, wait or reroute yet).','mute'));
+}
+
+function side(){
+  let a=$('#side'); a.textContent='';
+  cv.style.cursor=S.placing||S.placingObs||S.picking?'crosshair':'';
+  if(S.error){const p=el('p',S.error,'msg');p.setAttribute('role','alert');a.append(p)}
+  if(!S.levels.length){if(!S.error)a.append(el('p','Open a nav graph JSON file to see its levels.','mute'));return}
+  const tools=el('div',null,'sec-tools'), ca=el('button','Collapse all'), ea=el('button','Expand all');
+  ca.onclick=()=>{closed=new Set(SECTIONS);store('closed',JSON.stringify(SECTIONS));side()};
+  ea.onclick=()=>{closed=new Set();store('closed','[]');side()};
+  tools.append(ca,ea); a.append(tools);
+  const root=a;
+  a=section(root,'levels',S.levels.site?'Levels in '+S.levels.site:'Levels');
+  const lv=el('div',null,'levels');
+  S.levels.forEach((L,i)=>{
+    const b=el('button',null,'level'); b.setAttribute('aria-pressed',String(i===S.cur));
+    b.append(el('span',L.name),el('small',(L.floor!=null?`floor ${L.floor}, `:'')+`${L.list.length} nodes`));
+    b.onclick=()=>{S.cur=i;S.sel=null;S.hover=null;S.hoverEdge=null;if(!S.views[i])fit();side();draw()};
+    if(S.levels.length>1){
+      const after=e=>{const r=b.getBoundingClientRect();return e.clientY>r.top+r.height/2};
+      b.draggable=true; b.title='Drag to reorder (or Alt+↑ / Alt+↓)';
+      b.ondragstart=e=>{dragLv=i;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',L.name);b.classList.add('dragging')};
+      b.ondragend=()=>{dragLv=null;b.classList.remove('dragging')};
+      b.ondragover=e=>{if(dragLv==null)return;e.preventDefault();e.stopPropagation();const z=after(e);b.classList.toggle('drop-before',!z);b.classList.toggle('drop-after',z)};
+      b.ondragleave=()=>b.classList.remove('drop-before','drop-after');
+      b.ondrop=e=>{if(dragLv==null)return;e.preventDefault();e.stopPropagation();const f=dragLv;let to=i+(after(e)?1:0);if(f<to)to--;dragLv=null;moveLevel(f,to)};
+      b.onkeydown=e=>{if(!e.altKey||(e.key!=='ArrowUp'&&e.key!=='ArrowDown'))return;e.preventDefault();const to=i+(e.key==='ArrowUp'?-1:1);moveLevel(i,to);const nb=$('#side .levels').children[to];if(nb)nb.focus()};
+    }
+    lv.append(b);
+  });
+  a.append(lv);
+  if(S.levels.length>1) a.append(el('small',orderChanged()?'Level order changed (unsaved). Undo puts it back.':'Drag a level to change the order.','mute'));
+  const L=lvl();
+  robotsUI(root);
+  tasksUI(root);
+  obstaclesUI(root);
+  a=section(root,'show','Show');
+  for(const [k,t] of [['wp','Waypoints'],['labels','Point of interest names'],['sensors','Robot sensor ranges'],['edit','Edit mode: drag nodes to move them'],...(S.edit?[['add','Add nodes: click empty space to place one (linked to the selected node), or click a link to insert one into it'],['connect','Connect nodes: select a node, then click others to link them in a chain (click a linked pair again to unlink). Shift+click does the same without this on.'],['del','Delete: click a link to remove it, or a node to remove it with its links. The Delete key removes the selected node.']]:[]),...(L.overlay?[['plan','Floor plan image']]:[])]){
+    const lab=el('label',null,'opt'), c=el('input'); c.type='checkbox'; c.checked=S[k];
+    c.onchange=()=>{S[k]=c.checked;if(k==='edit'){if(!c.checked){S.add=false;S.connect=false;S.del=false;S.linking=false}side()}
+      if(c.checked&&k==='del'){S.add=false;S.connect=false;side()} if(c.checked&&(k==='add'||k==='connect')&&S.del){S.del=false;side()} draw()}; lab.append(c,el('span',t)); a.append(lab);
+  }
+  a=section(root,'level','This level');
+  const dl=el('dl');
+  for(const [k,v] of [['Nodes',L.list.length],['Edges',L.edges.length],['Points of interest',L.pois.length],['Lift links',L.list.filter(n=>n.out.length).length]]) dl.append(el('dt',k),el('dd',v));
+  a.append(dl);
+  if(editedLevel(L)){
+    const add=L.list.filter(n=>n.added).length, mv=L.list.filter(n=>!n.added&&(n.x!==n.ox||n.y!==n.oy)).length, del=L.origList.filter(n=>L.byId.get(n.id)!==n).length;
+    a.append(el('p',`Unsaved edits on this level: ${add} added, ${mv} moved, ${del} deleted. Press Save to write them to the file.`,'mute'));
+    const rb=el('button','Reset all edits on this level'); rb.onclick=()=>{remember(L);resetLevel(L);side();draw()}; a.append(rb);
+  }
+  if(L.skipped||L.zero){
+    a.append(el('p',[L.skipped?`${L.skipped} links to other levels skipped.`:'',L.zero?`${L.zero} zero-length edges.`:''].filter(Boolean).join(' '),'mute'));
+  }
+  if(S.sel){
+    const n=S.sel; a=section(root,'selected','Selected node');
+    const d=el('dl');
+    for(const [k,v] of [['Node',n.id],['Name',n.poi||'(waypoint)'],['Position',`${n.x.toFixed(3)}, ${n.y.toFixed(3)}`],['pose.z',n.z],['Links',n.links],['Actions',n.actions.join(', ')||'none'],['Lift to',n.out.length?n.out.map(o=>o.level).join(', '):'none']]) d.append(el('dt',k),el('dd',v));
+    a.append(d);
+    const row=el('div',null,'row');
+    for(const [k,t] of [['start','Use as start'],['dest','Use as destination']]){
+      const b=el('button',t); b.onclick=()=>{S[k]={lv:S.cur,node:n};replan();side();draw()}; row.append(b);
+    }
+    a.append(row);
+    if(S.edit){
+      const r2=el('div',null,'row');
+      const lb=el('button',S.linking?'Click another node…':'Link or unlink…'); lb.onclick=()=>{S.linking=!S.linking;side()}; r2.append(lb);
+      const db=el('button','Delete node'); db.onclick=()=>{remember(L);removeNode(L,n);side();draw()}; r2.append(db);
+      a.append(r2);
+    }
+  }
+  routeUI(root);
+  a=section(root,'pois',`Points of interest (${L.pois.length})`);
+  const f=el('input'); f.type='search'; f.placeholder='Filter by name'; f.value=S.filter; f.setAttribute('aria-label','Filter points of interest');
+  const ul=el('ul',null,'places');
+  const fill=()=>{
+    ul.textContent='';
+    for(const n of L.pois.filter(p=>p.poi.toLowerCase().includes(S.filter.toLowerCase()))){
+      const li=el('li'), b=el('button',n.poi); if(n===S.sel)b.className='on';
+      b.onclick=()=>{S.sel=n;const v=view();v.s=Math.max(v.s,12);v.ox=W/2-n.x*v.s;v.oy=H/2+n.y*v.s;side();draw()};
+      li.append(b);ul.append(li);
+    }
+  };
+  f.oninput=()=>{S.filter=f.value;fill()};
+  fill(); a.append(f,ul);
+  saveState();
+}
+
+function addNode(L,x,y,from){
+  let i=1,id;
+  do{id='new_'+L.name.split('#')[0]+'_'+i++}while(S.levels.some(l=>l.byId.has(id)));
+  const n={id,x,y,z:0,poi:'',actions:[],links:0,out:[],ox:x,oy:y,added:true};
+  L.list.push(n); L.byId.set(id,n); L.adj.set(n,[]);
+  if(from) toggleLink(L,from,n);
+  return n;
+}
+function toggleLink(L,a,b){
+  if(a===b) return;
+  const i=L.edges.findIndex(([p,q])=>(p===a&&q===b)||(p===b&&q===a));
+  if(i>=0){
+    L.edges.splice(i,1);
+    L.adj.set(a,L.adj.get(a).filter(x=>x!==b)); L.adj.set(b,L.adj.get(b).filter(x=>x!==a));
+    a.links--; b.links--;
+  } else {
+    L.edges.push([a,b]); L.adj.get(a).push(b); L.adj.get(b).push(a); a.links++; b.links++;
+  }
+  replan();
+}
+function removeNode(L,n){
+  for(const m of [...L.adj.get(n)]) toggleLink(L,n,m);
+  L.list.splice(L.list.indexOf(n),1); L.byId.delete(n.id); L.adj.delete(n); L.pois=L.pois.filter(p=>p!==n);
+  if(S.sel===n) S.sel=null;
+  for(const k of ['start','dest']) if(S[k]&&S[k].node===n) S[k]=null;
+  replan();
+}
+function edgeAt(L,px,py){
+  if(!L||!view()) return null;
+  let best=null, bd=64;
+  for(const e of L.edges){
+    const [a,c]=e, ax=sx(a), ay=sy(a), cx=sx(c), cy=sy(c), dx=cx-ax, dy=cy-ay, len2=dx*dx+dy*dy;
+    if(len2<1e-6) continue;
+    const t=Math.max(0,Math.min(1,((px-ax)*dx+(py-ay)*dy)/len2));
+    const x=ax+t*dx, y=ay+t*dy, d=(px-x)**2+(py-y)**2;
+    if(d<bd){bd=d; const v=view(); best={e,a,c,x:(x-v.ox)/v.s,y:(v.oy-y)/v.s}}
+  }
+  return best;
+}
+function splitEdge(L,a,c,x,y){
+  S.hoverEdge=null;
+  const n=addNode(L,x,y,null);
+  toggleLink(L,a,c); toggleLink(L,a,n); toggleLink(L,n,c);
+  return n;
+}
+function editedLevel(L){
+  const same=(p,q,a,c)=>(p===a&&q===c)||(p===c&&q===a);
+  return L.origList.some(n=>L.byId.get(n.id)!==n)||L.list.some(n=>n.added||n.x!==n.ox||n.y!==n.oy)||L.edges.length!==L.orig.length||L.edges.some(([a,c])=>!L.orig.some(([p,q])=>same(p,q,a,c)));
+}
+function resetLevel(L){
+  for(const n of L.list.filter(n=>n.added)) removeNode(L,n);
+  L.list=[...L.origList]; L.byId=new Map(L.list.map(n=>[n.id,n])); L.adj=new Map(); L.pois=L.list.filter(n=>n.poi);
+  for(const n of L.list){n.x=n.ox; n.y=n.oy; L.adj.set(n,[]); n.links=0}
+  L.edges=L.orig.map(e=>[...e]);
+  for(const [a,c] of L.edges){L.adj.get(a).push(c); L.adj.get(c).push(a); a.links++; c.links++}
+  replan();
+}
+// Undo/redo: snapshots of one level's nodes, positions and links, taken before each edit.
+const hist={undo:[],redo:[]};
+function snap(L){return {L,nodes:L.list.map(n=>[n,n.x,n.y]),edges:L.edges.map(e=>[...e]),pois:[...L.pois]}}
+function remember(L,s=snap(L)){hist.undo.push(s);if(hist.undo.length>200)hist.undo.shift();hist.redo=[]}
+// Level order: everything that stores a level index (current level, views, route/task steps, task form) is remapped.
+let dragLv=null;
+function orderChanged(){return S.levels.some((L,i)=>L!==S.levels.orig[i])}
+function setOrder(next){
+  const mv=i=>next.indexOf(S.levels[i]), views={};
+  for(const k in S.views) views[mv(+k)]=S.views[k];
+  S.cur=mv(S.cur); S.views=views;
+  for(const m of [S.start,S.dest]) if(m) m.lv=mv(m.lv);
+  for(const t of S.tasks) for(const st of t.steps||[]) if(st.type==='drive') st.lv=mv(st.lv); else {st.from=mv(st.from);st.to=mv(st.to)}
+  const v=S.taskDraft.dest, k=v.indexOf('|'); if(k>0) S.taskDraft.dest=mv(+v.slice(0,k))+v.slice(k);
+  S.levels.splice(0,S.levels.length,...next);
+  renumber();
+  replan();
+}
+// z is the level number: its place in the level list. Robots and their route points follow it when levels are reordered.
+function renumber(){
+  S.levels.forEach((L,i)=>L.z=i);
+  const z=name=>S.levels.findIndex(L=>L.name===name);
+  for(const r of S.robots){r.position.z=z(r.level);for(const p of r.route||[])p.z=z(p.level)}
+  for(const o of S.obstacles) o.z=z(o.level);
+}
+function moveLevel(from,to){
+  if(from===to||to<0||to>=S.levels.length) return;
+  remember(null,{order:[...S.levels]});
+  const next=[...S.levels]; next.splice(to,0,...next.splice(from,1));
+  setOrder(next); side(); draw();
+}
+function restore(s){
+  const L=s.L;
+  L.list=s.nodes.map(([n,x,y])=>{n.x=x;n.y=y;n.links=0;return n}); L.pois=[...s.pois];
+  L.byId=new Map(L.list.map(n=>[n.id,n])); L.adj=new Map(L.list.map(n=>[n,[]]));
+  L.edges=s.edges.map(e=>[...e]);
+  for(const [a,c] of L.edges){L.adj.get(a).push(c); L.adj.get(c).push(a); a.links++; c.links++}
+}
+function step(from,to){
+  const s=from.pop(); if(!s) return;
+  if(s.order){to.push({order:[...S.levels]});setOrder(s.order);side();draw();return}
+  to.push(snap(s.L)); restore(s);
+  S.cur=S.levels.indexOf(s.L); if(!S.views[S.cur]) fit();
+  if(S.sel&&!s.L.byId.has(S.sel.id)) S.sel=null;
+  for(const k of ['start','dest']) if(S[k]&&S.levels[S[k].lv].byId.get(S[k].node.id)!==S[k].node) S[k]=null;
+  S.hover=null; S.hoverEdge=null; S.linking=false;
+  replan(); side(); draw();
+}
+const undo=()=>step(hist.undo,hist.redo), redo=()=>step(hist.redo,hist.undo);
+function replan(){S.route=S.start&&S.dest?planRoute(S.levels,S.start,S.dest):null;replanRobots()}
+function nm(m){return (m.node.poi||m.node.id)+' ('+S.levels[m.lv].name+')'}
+function routeUI(a){
+  if(!S.start&&!S.dest) return;
+  a=section(a,'route','Route (BFS)');
+  const d=el('dl');
+  d.append(el('dt','Start'),el('dd',S.start?nm(S.start):'not set'),el('dt','Destination'),el('dd',S.dest?nm(S.dest):'not set'));
+  a.append(d);
+  if(S.route&&S.route.error){const p=el('p',S.route.error,'msg');p.setAttribute('role','alert');a.append(p)}
+  if(S.route&&S.route.steps){
+    const ol=el('ol',null,'steps');
+    S.route.steps.forEach(st=>{
+      const li=el('li'), b=el('button',st.type==='drive'?`Drive on ${S.levels[st.lv].name}: ${st.path.length} nodes`:`Lift at ${st.at}: switch to ${S.levels[st.to].name}`);
+      b.onclick=()=>{S.cur=st.type==='drive'?st.lv:st.from;S.sel=null;S.hover=null;if(!S.views[S.cur])fit();side();draw()};
+      li.append(b); ol.append(li);
+    });
+    a.append(ol);
+  }
+  const c=el('button','Clear route'); c.onclick=()=>{S.start=S.dest=S.route=null;side();draw()}; a.append(c);
+}
+
+// src: {kind:'server',name} (served by serve.py), {kind:'handle',name,handle} (File System Access), or {kind:'file',name} (download on save)
+// The imported file is never written; Save goes to "<name>_edited.json" (or to itself if it already is one).
+function editedName(name){return name.replace(/(_edited)?\.json$/i,'')+'_edited.json'}
+function loadText(text,src){
+  try{
+    const json=JSON.parse(text), levels=parseNavGraph(json);
+    for(const o of json.overlays||[]){
+      const L=levels.find(l=>l.name===o.level); if(!L||!o.meta||!o.pngBase64) continue;
+      const img=new Image(); img.onload=draw; img.src='data:image/png;base64,'+String(o.pngBase64).split(',').pop();
+      L.overlay={img,meta:o.meta};
+    }
+    for(const L of levels) L.origList=[...L.list];
+    levels.orig=[...levels];
+    S.levels=levels;hist.undo=[];hist.redo=[];S.json=json;S.src=src;S.saved='';S.outHandle=null;S.cur=0;S.views={};S.sel=null;S.hover=null;S.error='';S.start=S.dest=S.route=null;S.robots=[];S.robot=null;S.placing=false;robotSeq=0;S.tasks=[];taskSeq=0;S.picking=null;S.msg='';S.taskDraft.dest='';S.taskDraft.lift='';S.obstacles=[];S.placingObs=false;renumber();
+    $('#empty').style.display='none'; fit();
+  }catch(err){
+    S.error=err instanceof SyntaxError?'That file is not valid JSON.':err.message;
+  }
+  side();draw();
+}
+async function load(file,handle){loadText(await file.text(),handle?{kind:'handle',name:file.name,handle}:{kind:'file',name:file.name})}
+
+function dirty(){return S.levels.length>0&&(orderChanged()||S.levels.some(editedLevel))}
+function saveState(){
+  const b=$('#save'), d=dirty();
+  b.disabled=!S.json||S.saving;
+  $('#undo').disabled=!hist.undo.length; $('#redo').disabled=!hist.redo.length;
+  $('#status').textContent=!S.json?'':S.saving?'Saving…':(S.src.name+(S.src.name!==editedName(S.src.name)?' → saves to '+(S.outHandle?S.outHandle.name:editedName(S.src.name)):'')+(d?' • unsaved changes':S.saved?' • '+S.saved:''));
+}
+// Write the current graph back into the loaded JSON (level order, poses, branches, added and removed nodes).
+function applyEdits(){
+  const root=S.levels.root, g0=root.graphs;
+  root.graphs={};
+  for(const L of S.levels) root.graphs[L.name]=g0[L.name];
+  for(const k of Object.keys(g0)) if(!(k in root.graphs)) root.graphs[k]=g0[k];
+  for(const L of S.levels){
+    const g=root.graphs[L.name];
+    for(const id of Object.keys(g)) if(!L.byId.has(id)) delete g[id];
+    for(const n of L.list){
+      const o=g[n.id]||(g[n.id]={actions:{values:[]},branches:[],locationName:'',nodeDisplayName:n.id,pose:{x:n.x,y:n.y,z:n.z??0}});
+      o.pose.x=n.x; o.pose.y=n.y;
+      const nb=L.adj.get(n).map(m=>m.id), br=(o.branches||[]).filter(b=>L.byId.has(b)?nb.includes(b):S.levels.some(l=>l.byId.has(b)));
+      for(const id of nb) if(!br.includes(id)) br.push(id);
+      o.branches=br;
+    }
+  }
+}
+function commitEdits(){
+  for(const L of S.levels){for(const n of L.list){n.ox=n.x;n.oy=n.y;n.added=false} L.orig=L.edges.map(e=>[...e]); L.origList=[...L.list]}
+  S.levels.orig=[...S.levels];
+}
+async function save(){
+  if(!S.json||S.saving) return;
+  S.saving=true; saveState();
+  try{
+    applyEdits();
+    const text=JSON.stringify(S.json,null,2), src=S.src, out=editedName(src.name);
+    if(src.kind==='server'){
+      const r=await fetch(encodeURIComponent(out),{method:'PUT',headers:{'Content-Type':'application/json'},body:text});
+      if(!r.ok) throw new Error((await r.json().catch(()=>({}))).error||`Server returned ${r.status}.`);
+    }else if(window.showSaveFilePicker){
+      if(!S.outHandle){
+        const h=await showSaveFilePicker({suggestedName:out,types:[{description:'Nav graph JSON',accept:{'application/json':['.json']}}]});
+        if(src.handle&&src.name!==out&&await h.isSameEntry(src.handle)) throw new Error('Pick a new file name; the imported file is kept unchanged.');
+        S.outHandle=h;
+      }
+      const w=await S.outHandle.createWritable(); await w.write(text); await w.close();
+    }else{
+      const a=el('a'); a.href=URL.createObjectURL(new Blob([text],{type:'application/json'})); a.download=out; a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    }
+    commitEdits();
+    S.error=''; S.saved=(src.kind==='server'||S.outHandle?'saved to ':'downloaded ')+(S.outHandle?S.outHandle.name:out)+' at '+new Date().toLocaleTimeString();
+  }catch(err){
+    if(err.name!=='AbortError') S.error='Save failed: '+err.message;
+  }
+  S.saving=false; side(); draw();
+}
+async function autoLoad(){
+  if(!/^https?:$/.test(location.protocol)) return;
+  try{
+    let name=new URLSearchParams(location.search).get('file');
+    if(!name){const r=await fetch('api/default');if(r.ok)name=(await r.json()).file}
+    if(!name) return;
+    const r=await fetch(encodeURIComponent(name),{cache:'no-store'});
+    if(!r.ok) throw new Error(`Could not load ${name} (${r.status}).`);
+    // read the text first: loadText is looked up when it is called, so api.js's version (which also sends the map
+    // to the server) is used if api.js has loaded by now
+    const text=await r.text();
+    loadText(text,{kind:'server',name});
+  }catch(err){S.error=err.message;side()}
+}
+
+const fi=$('#file');
+$('#open').onclick=$('#open2').onclick=async()=>{
+  if(!window.showOpenFilePicker) return fi.click();
+  try{
+    const [h]=await showOpenFilePicker({types:[{description:'Nav graph JSON',accept:{'application/json':['.json']}}]});
+    load(await h.getFile(),h);
+  }catch(err){if(err.name!=='AbortError'){S.error=err.message;side()}}
+};
+fi.onchange=()=>{if(fi.files[0])load(fi.files[0]);fi.value=''};
+$('#save').onclick=save;
+$('#undo').onclick=undo; $('#redo').onclick=redo;
+addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&(S.placing||S.placingObs||S.picking)){S.placing=false;S.placingObs=false;S.picking=null;S.ghost=null;S.obsGhost=null;side();draw();return}
+  if((e.key==='Delete'||e.key==='Backspace')&&S.edit&&S.sel&&!e.target.matches('input,select,textarea')){e.preventDefault();remember(lvl());removeNode(lvl(),S.sel);S.hover=null;side();draw();return}
+  if(!(e.ctrlKey||e.metaKey)) return;
+  const k=e.key.toLowerCase();
+  if(k==='s'){e.preventDefault();save();return}
+  if(e.target.matches('input')) return; // keep normal text undo in the filter box
+  if(k==='z'&&!e.shiftKey){e.preventDefault();undo()}
+  else if(k==='y'||(k==='z'&&e.shiftKey)){e.preventDefault();redo()}
+});
+addEventListener('beforeunload',e=>{if(dirty()){e.preventDefault();e.returnValue=''}});
+addEventListener('dragover',e=>e.preventDefault());
+addEventListener('drop',async e=>{
+  e.preventDefault();
+  if(dragLv!=null) return; // a level dropped outside the list, not a file
+  const it=e.dataTransfer.items&&e.dataTransfer.items[0], f=e.dataTransfer.files[0];
+  const h=it&&it.getAsFileSystemHandle?await it.getAsFileSystemHandle().catch(()=>null):null;
+  if(h&&h.kind==='file') load(await h.getFile(),h); else if(f) load(f);
+});
+autoLoad();
+new ResizeObserver(resize).observe($('#stage'));
+matchMedia('(prefers-color-scheme:dark)').addEventListener('change',draw);
+resize();
+</script>
+<script src="/socket.io/socket.io.js"></script>
+<script src="api.js"></script>
+</body>
+</html>

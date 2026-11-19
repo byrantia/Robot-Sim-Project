@@ -1,0 +1,8 @@
+{
+  "name": "robot-sim",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": { "start": "node server.js", "test": "node --test" },
+  "engines": { "node": ">=18" },
+  "dependencies": { "express": "^5.0.0", "socket.io": "^4.7.0" }
+}
