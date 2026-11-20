@@ -36,11 +36,20 @@ function planRoute(nav, from, to, lift, opts = {}) {
     if (!p) return { error: 'No route to destination.' };
     steps = [{ type: 'drive', level: from.level, path: p }];
   } else {
-    const via = (o) => o.level === to.level && B.nodes.has(o.id) && (!lift || o.lift === lift);
-    const p1 = bfs(A, start, (n) => (A.out.get(n) || []).some(via), pass(from.level));
-    if (!p1) return { error: lift ? `No route to lift ${lift} on ${from.level}, or it does not go to ${to.level}.` : `No route to a lift on ${from.level}.` };
-    const hold = p1[p1.length - 1], link = A.out.get(hold).find(via);
-    const p2 = bfs(B, link.id, (n) => n === to.node, pass(to.level));
+    // Ways to the other level: the chosen lift; else a real lift (liftConfig: its lift point on each level), and only
+    // if none of those works, any other link between the levels (a plain branch to a node on the other level). Some
+    // maps also link the lift hold points across levels (where the robot calls the lift): those are not the ride.
+    const onTo = (o) => o.level === to.level && B.nodes.has(o.id);
+    const ways = lift ? [(o) => onTo(o) && o.lift === lift] : [(o) => onTo(o) && o.lift != null, onTo];
+    let p1 = null, p2 = null, hold = null, link = null, reached = false;
+    for (const via of ways) {
+      p1 = bfs(A, start, (n) => (A.out.get(n) || []).some(via), pass(from.level));
+      if (!p1) continue;
+      reached = true; hold = p1[p1.length - 1]; link = A.out.get(hold).find(via);
+      p2 = bfs(B, link.id, (n) => n === to.node, pass(to.level));
+      if (p2) break;
+    }
+    if (!reached) return { error: lift ? `No route to lift ${lift} on ${from.level}, or it does not go to ${to.level}.` : `No route to a lift on ${from.level}.` };
     if (!p2) return { error: `No route from the lift to the destination on ${to.level}.` };
     steps = [{ type: 'drive', level: from.level, path: p1 }, { type: 'lift', lift: link.lift, at: hold, from: from.level, to: to.level },
       { type: 'drive', level: to.level, path: p2 }];
