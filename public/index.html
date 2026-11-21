@@ -180,11 +180,17 @@ function planRoute(levels,from,to,lift){
     const p=bfs(A,from.node,n=>n===to.node);
     return p?{steps:[{type:'drive',lv:from.lv,path:p}]}:{error:'No route to destination.'};
   }
-  const via=o=>o.level===B.name&&B.byId.has(o.id)&&(!lift||String(o.lift)===lift);
-  const p1=bfs(A,from.node,n=>n.out.some(via));
-  if(!p1) return {error:lift?`No route to lift ${lift} on the start level, or it does not go to ${B.name}.`:'No route to a level link on the start level.'};
-  const hold=p1[p1.length-1], link=hold.out.find(via), land=B.byId.get(link.id);
-  const p2=bfs(B,land,n=>n===to.node);
+  // the chosen lift; else a real lift (liftConfig), and only if none works any other link between the levels
+  // (some maps also link the lift hold points across levels: that is where the lift is called, not the ride)
+  const onB=o=>o.level===B.name&&B.byId.has(o.id);
+  const ways=lift?[o=>onB(o)&&String(o.lift)===lift]:[o=>onB(o)&&o.lift!=null,onB];
+  let p1=null,p2=null,hold=null,link=null,reached=false;
+  for(const via of ways){
+    p1=bfs(A,from.node,n=>n.out.some(via)); if(!p1) continue;
+    reached=true; hold=p1[p1.length-1]; link=hold.out.find(via);
+    p2=bfs(B,B.byId.get(link.id),n=>n===to.node); if(p2) break;
+  }
+  if(!reached) return {error:lift?`No route to lift ${lift} on the start level, or it does not go to ${B.name}.`:'No route to a level link on the start level.'};
   if(!p2) return {error:'No route to destination on the other level.'};
   return {steps:[{type:'drive',lv:from.lv,path:p1},{type:'lift',from:from.lv,to:to.lv,at:hold.id,lift:link.lift},{type:'drive',lv:to.lv,path:p2}]};
 }

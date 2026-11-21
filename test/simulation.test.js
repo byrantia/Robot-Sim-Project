@@ -103,3 +103,25 @@ test('localize moves an idle robot (and its reset point), not one driving a task
   go(e, { robotID: id, destination: 'Lab' });
   assert.equal(e.localize({ robotID: id, position: { x: 0, y: 0 } }).failureCode, 1004);
 });
+
+// Like some real maps: the lift hold points are also linked across levels (where the robot calls the lift), and
+// liftConfig puts the lift itself at separate lift points. L1: A(0,0) - H(5,0) "hold" - K(5,3) "lift point".
+const HOLD_MAP = () => parseNavGraph({ graphs: {
+  L1: { A: { pose: { x: 0, y: 0 }, branches: ['H', 'K'] }, H: { pose: { x: 5, y: 0 }, branches: ['A', 'H2'] }, K: { pose: { x: 5, y: 3 }, branches: ['A'] } },
+  L2: { H2: { pose: { x: 5, y: 0 }, branches: ['H', 'G'] }, K2: { pose: { x: 5, y: 3 }, branches: ['G'] }, G: { pose: { x: 0, y: 0 }, locationName: 'Goal', branches: ['H2', 'K2'] } } },
+  liftConfig: { lifts: [{ id: 'L', details: [{ mapName: 'L1', liftPoint: 'K' }, { mapName: 'L2', liftPoint: 'K2' }] }] } });
+
+test('with no lift chosen, a real lift (liftConfig) is taken, not a plain link between the hold points', () => {
+  const e = new Engine(); e.setNav(HOLD_MAP());
+  const id = e.createRobot({ speed: 1, startPosition: { level: 'L1', x: 0, y: 0 } }).data.robotID;
+  const t = go(e, { robotID: id, destination: 'Goal' }).data;
+  assert.deepEqual(t.steps.map((s) => (s.type === 'lift' ? `lift ${s.lift} at ${s.at}` : s.path.join('>'))), ['A>K', 'lift L at K', 'K2>G']);
+});
+
+test('a map with only plain links between levels (no liftConfig) still changes level there', () => {
+  const nav = HOLD_MAP(); nav.graph.L1.out.get('K').length = 0;   // no lift: only the H - H2 link is left
+  const e = new Engine(); e.setNav(nav);
+  const id = e.createRobot({ speed: 1, startPosition: { level: 'L1', x: 0, y: 0 } }).data.robotID;
+  const t = go(e, { robotID: id, destination: 'Goal' }).data;
+  assert.deepEqual(t.steps.map((s) => (s.type === 'lift' ? `lift ${s.lift} at ${s.at}` : s.path.join('>'))), ['A>H', 'lift null at H', 'H2>G']);
+});
